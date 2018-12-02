@@ -9,6 +9,8 @@
 !.gitmodules
 !gradle/*
 !gradle/**/*
+!resource/test.wav
+
 gradle/.gradle
 
 build_debug
