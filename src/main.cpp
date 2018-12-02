@@ -21,10 +21,10 @@ Buffer<float> stretch(Buffer<float> const &src,
     assert(stretch_amount >= 0);
     
     int const kProcessSize = 2048;
+    
+    //　RubberBandStretcherクラスを設定
     st.setMaxProcessSize(kProcessSize);
-    auto sent_change = pow(2.0, cent_change_amount / 1200.0);
-    st.setExpectedInputDuration(src.samples());
-    st.setPitchScale(sent_change);
+    st.setPitchScale(pow(2.0, cent_change_amount / 1200.0));
     st.setTimeRatio(stretch_amount);
     
     Buffer<float> dest(src.channels(), (int)(src.samples() * stretch_amount));
@@ -43,6 +43,7 @@ Buffer<float> stretch(Buffer<float> const &src,
         }
         
         auto const finished = (src_pos + num_to_send == src.samples());
+        // オーディオブロックをRubberBandStretcherクラスに送信
         st.process(src_heads.data(), num_to_send, finished);
 
         for( ; ; ) {
@@ -59,6 +60,7 @@ Buffer<float> stretch(Buffer<float> const &src,
                 dest_heads[ch] = dest.data()[ch] + dest_pos;
             }
             
+            // RubberBandStretcherクラスから取り出し可能な分だけオーディオデータを取り出して、destバッファに書き込み
             st.retrieve(dest_heads.data(), num_to_receive);
             dest_pos += num_to_receive;
         }
@@ -76,6 +78,7 @@ Buffer<float> stretch(Buffer<float> const &src,
 {
     assert(stretch_amount >= 0);
     
+    //　SoundTouchクラスを設定
     int const kProcessSize = 2048;
     st.setPitchSemiTones(cent_change_amount / 100.0);
     st.setTempo(1 / stretch_amount);
@@ -97,6 +100,7 @@ Buffer<float> stretch(Buffer<float> const &src,
             }
         }
         
+        // オーディオブロックをSoundTouchクラスに送信
         st.putSamples(src_interleaved.data(), num_send/* * src.channels()*/);
         
         auto const finished = (src_pos + num_send == src.samples());
@@ -111,8 +115,10 @@ Buffer<float> stretch(Buffer<float> const &src,
             auto const num_receive = std::min<int>(dest_pos + num_ready, dest.samples()) - dest_pos;
             if(num_receive == 0) { break; }
 
+            // SoundTouchクラスから取り出し可能な分だけオーディオデータを取り出して、dest_interleavedバッファに書き込み
             st.receiveSamples(dest_interleaved.data(), num_receive/* * src.channels() */);
             
+            // dest_interleavedバッファからdestバッファにデータを転送
             for(int ch = 0; ch < src.channels(); ++ch) {
                 for(int smp = 0; smp < num_receive; ++smp) {
                     dest.data()[ch][dest_pos + smp] = dest_interleaved[smp * src.channels() + ch];
