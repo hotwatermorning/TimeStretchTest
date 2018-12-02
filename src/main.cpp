@@ -15,64 +15,6 @@ Buffer<float> stretch(Buffer<float> const &src,
 template<>
 Buffer<float> stretch(Buffer<float> const &src,
                       double stretch_amount, double cent_change_amount,
-                      RubberBand::RubberBandStretcher &st
-                      )
-{
-    assert(stretch_amount >= 0);
-    
-    int const kProcessSize = 2048;
-    
-    //　RubberBandStretcherクラスを設定
-    st.setMaxProcessSize(kProcessSize);
-    st.setPitchScale(pow(2.0, cent_change_amount / 1200.0));
-    st.setTimeRatio(stretch_amount);
-    
-    Buffer<float> dest(src.channels(), (int)(src.samples() * stretch_amount));
-    int dest_pos = 0;
-    
-    std::vector<float const *> src_heads(src.channels());
-    std::vector<float *> dest_heads(src.channels());
-
-    auto const length = src.samples();
-    
-    for(int src_pos = 0; src_pos < length; src_pos += kProcessSize) {
-        auto const num_to_send = std::min<int>(src_pos + kProcessSize, length) - src_pos;
-        
-        for(int ch = 0; ch < src.channels(); ++ch) {
-            src_heads[ch] = src.data()[ch] + src_pos;
-        }
-        
-        auto const finished = (src_pos + num_to_send == src.samples());
-        // オーディオブロックをRubberBandStretcherクラスに送信
-        st.process(src_heads.data(), num_to_send, finished);
-
-        for( ; ; ) {
-            auto num_ready = st.available();
-            num_ready = std::min<int>(num_ready, kProcessSize);
-            
-            if(num_ready == -1) { return dest; } //< finished
-            
-            auto const num_to_receive = std::min<int>(dest_pos + num_ready, dest.samples()) - dest_pos;
-            if(num_ready != 0 && num_to_receive == 0) { return dest; }
-            if(num_to_receive == 0) { break; }
-            
-            for(int ch = 0; ch < src.channels(); ++ch) {
-                dest_heads[ch] = dest.data()[ch] + dest_pos;
-            }
-            
-            // RubberBandStretcherクラスから取り出し可能な分だけオーディオデータを取り出して、destバッファに書き込み
-            st.retrieve(dest_heads.data(), num_to_receive);
-            dest_pos += num_to_receive;
-        }
-    }
-    
-    assert(st.available() == -1);
-    return dest;
-}
-
-template<>
-Buffer<float> stretch(Buffer<float> const &src,
-                      double stretch_amount, double cent_change_amount,
                       soundtouch::SoundTouch &st
                       )
 {
@@ -129,6 +71,64 @@ Buffer<float> stretch(Buffer<float> const &src,
         }
     }
     
+    return dest;
+}
+
+template<>
+Buffer<float> stretch(Buffer<float> const &src,
+                      double stretch_amount, double cent_change_amount,
+                      RubberBand::RubberBandStretcher &st
+                      )
+{
+    assert(stretch_amount >= 0);
+    
+    int const kProcessSize = 2048;
+    
+    //　RubberBandStretcherクラスを設定
+    st.setMaxProcessSize(kProcessSize);
+    st.setPitchScale(pow(2.0, cent_change_amount / 1200.0));
+    st.setTimeRatio(stretch_amount);
+    
+    Buffer<float> dest(src.channels(), (int)(src.samples() * stretch_amount));
+    int dest_pos = 0;
+    
+    std::vector<float const *> src_heads(src.channels());
+    std::vector<float *> dest_heads(src.channels());
+    
+    auto const length = src.samples();
+    
+    for(int src_pos = 0; src_pos < length; src_pos += kProcessSize) {
+        auto const num_to_send = std::min<int>(src_pos + kProcessSize, length) - src_pos;
+        
+        for(int ch = 0; ch < src.channels(); ++ch) {
+            src_heads[ch] = src.data()[ch] + src_pos;
+        }
+        
+        auto const finished = (src_pos + num_to_send == src.samples());
+        // オーディオブロックをRubberBandStretcherクラスに送信
+        st.process(src_heads.data(), num_to_send, finished);
+        
+        for( ; ; ) {
+            auto num_ready = st.available();
+            num_ready = std::min<int>(num_ready, kProcessSize);
+            
+            if(num_ready == -1) { return dest; } //< finished
+            
+            auto const num_to_receive = std::min<int>(dest_pos + num_ready, dest.samples()) - dest_pos;
+            if(num_ready != 0 && num_to_receive == 0) { return dest; }
+            if(num_to_receive == 0) { break; }
+            
+            for(int ch = 0; ch < src.channels(); ++ch) {
+                dest_heads[ch] = dest.data()[ch] + dest_pos;
+            }
+            
+            // RubberBandStretcherクラスから取り出し可能な分だけオーディオデータを取り出して、destバッファに書き込み
+            st.retrieve(dest_heads.data(), num_to_receive);
+            dest_pos += num_to_receive;
+        }
+    }
+    
+    assert(st.available() == -1);
     return dest;
 }
 
@@ -197,8 +197,9 @@ int main()
 {
     double stretch_amount = 1.3;
     double cent_change_amount = 500;
-    runner("../../resource/test.wav", stretch_amount, cent_change_amount, Library::kRubberband);
+    
     runner("../../resource/test.wav", stretch_amount, cent_change_amount, Library::kSoundTouch);
+    runner("../../resource/test.wav", stretch_amount, cent_change_amount, Library::kRubberband);
     
     std::cout << "finished." << std::endl;
 }
