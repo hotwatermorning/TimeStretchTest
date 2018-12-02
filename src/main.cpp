@@ -52,10 +52,8 @@ Buffer<float> stretch(Buffer<float> const &src,
             if(num_ready == -1) { return dest; } //< finished
             
             auto const num_to_receive = std::min<int>(dest_pos + num_ready, dest.samples()) - dest_pos;
-            if(num_to_receive == 0) {
-                //if(num_ready != 0) { return dest; }
-                break;
-            }
+            if(num_ready != 0 && num_to_receive == 0) { return dest; }
+            if(num_to_receive == 0) { break; }
             
             for(int ch = 0; ch < src.channels(); ++ch) {
                 dest_heads[ch] = dest.data()[ch] + dest_pos;
@@ -161,7 +159,7 @@ void runner(std::string filename, double stretch_amount, double cent_change_amou
         soundtouch::SoundTouch st;
         st.setSampleRate(af_src.getSampleRate());
         st.setChannels(af_src.getNumChannels());
-        buf_dest = call_stretch(st, 1.3, 700);
+        buf_dest = call_stretch(st, stretch_amount, cent_change_amount);
     } else {
         using RB = RubberBand::RubberBandStretcher;
         
@@ -171,7 +169,7 @@ void runner(std::string filename, double stretch_amount, double cent_change_amou
                                            af_src.getNumChannels(),
                                            options);
         
-        buf_dest = call_stretch(st, 1.3, 700);
+        buf_dest = call_stretch(st, stretch_amount, cent_change_amount);
     }
     
     
