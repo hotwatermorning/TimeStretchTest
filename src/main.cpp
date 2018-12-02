@@ -156,16 +156,12 @@ void runner(std::string filename, double stretch_amount, double cent_change_amou
                   buf_src.data()[ch]);
     }
     
-    auto call_stretch = [&](auto &st, double stretch_ratio, double cent_change_amount) {
-        return stretch(buf_src, stretch_ratio, cent_change_amount, st);
-    };
-    
     Buffer<float> buf_dest;
     if(library == Library::kSoundTouch) {
         soundtouch::SoundTouch st;
         st.setSampleRate(af_src.getSampleRate());
         st.setChannels(af_src.getNumChannels());
-        buf_dest = call_stretch(st, stretch_amount, cent_change_amount);
+        buf_dest = stretch(buf_src, stretch_amount, cent_change_amount, st);
     } else {
         using RB = RubberBand::RubberBandStretcher;
         
@@ -175,7 +171,7 @@ void runner(std::string filename, double stretch_amount, double cent_change_amou
                                            af_src.getNumChannels(),
                                            options);
         
-        buf_dest = call_stretch(st, stretch_amount, cent_change_amount);
+        buf_dest = stretch(buf_src, stretch_amount, cent_change_amount, st);
     }
     
     
