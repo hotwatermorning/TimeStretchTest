@@ -14,3 +14,5 @@ cd ../build_debug/Debug
 ```
 
 これによって、`resource`ディレクトリのtest.wavを、SoundTouchとRubberBandでそれぞれタイムストレッチ／ピッチシフトしたファイルが、同じく`resource`ディレクトリに生成されます。
+
+(現状は、OSX 10.13.4 + Xcode 9.3.1環境での動作のみ確認しています)
