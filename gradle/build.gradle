@@ -1,0 +1,200 @@
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+def ensure_property(def obj, String keyname, List candidates, Integer default_value_index = 0)
+{
+  if(!obj.hasProperty(keyname)) {
+    obj.metaClass.setProperty(keyname, candidates[default_value_index])
+  }
+
+  assert(candidates.contains(obj.getProperty(keyname)))
+}
+
+def getenv(String key) { return java.lang.System.getenv()[key] }
+def isWindows() { return System.properties['os.name'].toLowerCase().startsWith("windows") }
+
+// Property about build configuration
+ensure_property(project, "config", ["Debug", "Release"])
+
+ext {
+  build_dir_name = "build_${project.config.toLowerCase()}"
+}
+
+// 渡された文字列を空白で区切って、単語のリストとして返す。
+// ただし、引用符(`'` or `"`)で囲まれた範囲は空白で区切らずに一つの単語とみなす。
+// 引用符で囲まれた範囲内であっても、`\"`のようにエスケープされているものや、
+// 引用符の種類が異なるものは引用符の終わりとはみなさない。
+// ex) tokenize(/abc def "ghi \"jkl ' mno" pqr/) => [abc, def, ghi "jkl ' mno, pqr]
+def tokenize(String data)
+{
+  def separator_char = ' '
+  def escape_char = '\\'
+  def quote_chars = ['\'', '"']
+
+  String token = ""
+  def output = []
+  def in_esc = false
+  def found_quote = ""
+  def in_string = { found_quote != "" }
+
+  data.each {
+    if(in_string()) {
+      if(in_esc) {
+        in_esc = false
+      } else if(it == escape_char) {
+        in_esc = true
+        return
+      } else if(it == found_quote) {
+        found_quote = ""
+        return
+      }
+    } else {
+      if(quote_chars.contains(it)) {
+        found_quote = it
+        return
+      } else if(it == separator_char) {
+        if(token != "") {
+          output << token
+          token = ""
+        }
+        return
+      }
+    }
+
+    token += it
+  }
+
+  assert(in_esc == false)
+  assert(in_string() == false)
+
+  if(token != "") { output << token }
+  return output
+}
+
+//! @param params is executable and the parameters which are passed to the executable.
+//! @param working_dir is the working directory for the executable.
+//! @param env_vars is environment variables as a list of key:value pair. this parameter may be nil.
+def execute_with_exit_code(def params, String working_dir = ".", def env_vars = [:])
+{
+  def tmp = tokenize(params)
+  println "${tmp} @ '${working_dir}' (${env_vars})"
+
+  def pb = new ProcessBuilder(tokenize(params)).redirectErrorStream(true)
+  pb.directory(file(working_dir).getAbsoluteFile())
+
+  if(env_vars) {
+    def pb_env = pb.environment()
+    env_vars.each { key, value -> pb_env.put(key, value) }
+  }
+
+  def process = pb.start()
+
+  def redir_stdout = Executors.newSingleThreadExecutor()
+  def redir_stderr = Executors.newSingleThreadExecutor()
+
+  redir_stdout.execute {
+    process.inputStream.eachLine { println it }
+  }
+
+  redir_stderr.execute {
+    process.errorStream.eachLine { println it }
+  }
+
+  def exit_code = process.waitFor()
+
+  redir_stdout.shutdown();
+  redir_stderr.shutdown();
+  redir_stdout.awaitTermination(1, TimeUnit.MINUTES)
+  redir_stderr.awaitTermination(1, TimeUnit.MINUTES)
+
+  return exit_code
+}
+
+//! similar to execute_with_exit_code but this function fails if the target command ends with exit code of non zero.
+def execute(def params, String working_dir = ".", def env_vars = [:])
+{
+  def exit_code = execute_with_exit_code(params, working_dir, env_vars)
+  assert (exit_code == 0)
+}
+
+task update_submodules {
+  doLast {
+    execute("git submodule update --init --recursive", "..")
+  }
+}
+
+task build_soundtouch {
+  doLast {
+    def build_dir = file("../ext/soundtouch/${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${build_dir}")
+    execute("./bootstrap", "${build_dir}/..")
+    execute("../configure --disable-shared --prefix=${build_dir}/install", build_dir)
+    execute("make -j", build_dir)
+    execute("make install", build_dir)
+  }
+}
+build_soundtouch.mustRunAfter update_submodules
+
+
+task build_rubberband {
+  doLast {
+    execute("make -f Makefile.osx bin", "../ext/rubberband")
+    execute("make -f Makefile.osx lib", "../ext/rubberband")
+    execute("make -f Makefile.osx static", "../ext/rubberband")
+  }
+}
+build_rubberband.mustRunAfter update_submodules
+
+task build_submodules {
+  dependsOn { [build_soundtouch, build_rubberband] }
+}
+
+task prepare_app {
+  doLast {
+    def build_dir = file("../${build_dir_name}").getAbsolutePath()
+    execute("mkdir -p ${build_dir}")
+    execute("cmake -GXcode -DCMAKE_BUILD_TYPE=${project.config} ..", build_dir)
+  }
+}
+prepare_app.mustRunAfter build_submodules
+
+task build_app {
+  doLast {
+    def build_dir = file("../${build_dir_name}").getAbsolutePath()
+    execute("xcodebuild -configuration ${project.config}", build_dir)
+  }
+}
+build_app.mustRunAfter prepare_app
+
+//! 指定したディレクトリの直下にあるディレクトリのうち、
+//! 現在のビルド構成によって決まるディレクトリ名と同じディレクトリがあれば、それを削除する。
+def delete_build_dir(def target_dir) {
+  file(target_dir).eachDir() {
+    if(it.getName() == build_dir_name) {
+      println "dir path to delete: ${it.getAbsolutePath()}"
+      it.deleteDir()
+    }
+  }
+}
+
+task clean_submodules {
+  doLast {
+    file("../ext").eachDir {
+      delete_build_dir(it)
+    }
+  }
+}
+
+task clean_app {
+  doLast {
+    delete_build_dir("..")
+  }
+}
+
+task clean_all {
+  dependsOn { [clean_submodules, clean_app] }
+}
+
+task build_all {
+  dependsOn { [update_submodules, build_submodules, prepare_app, build_app] }
+}

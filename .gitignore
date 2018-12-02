@@ -1,0 +1,16 @@
+*.*
+!*.cpp
+!*.hpp
+!*.h
+!*.mm
+!*.txt
+!*.md
+!.gitignore
+!.gitmodules
+!gradle/*
+!gradle/**/*
+gradle/.gradle
+
+build_debug
+build_release
+ext

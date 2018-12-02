@@ -1,0 +1,9 @@
+[submodule "ext/soundtouch"]
+	path = ext/soundtouch
+	url = https://gitlab.com/soundtouch/soundtouch.git
+[submodule "ext/rubberband"]
+	path = ext/rubberband
+	url = https://github.com/breakfastquay/rubberband.git
+[submodule "ext/AudioFile"]
+	path = ext/AudioFile
+	url = https://github.com/adamstark/AudioFile.git
